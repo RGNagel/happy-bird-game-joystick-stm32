@@ -37,6 +37,14 @@ const struct figura_t hb_bird_fig = {
 				0x12, 0x1E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 		}
 };
+const struct figura_t hb_black_little_bird_fig = {
+		.largura = 11,
+		.altura = 11,
+		.pixels = {
+				0x70, 0xFC, 0xFE, 0xFE, 0xFF, 0x77, 0x5F, 0x56, 0xDE, 0xDC, 0x50, 0x00, 0x01, 0x03, 0x03
+		}
+};
+
 struct pontos_t hb_bird_pts;
 
 const struct figura_t hb_obstacle_fig = {
@@ -104,6 +112,16 @@ void desenha_retangulo_preenchido(struct pontos_t *pts, uint32_t prop)
 		line.x2 = dx;
 		desenha_linha(&line, prop);
 	}
+}
+
+inline void apaga_fig(struct pontos_t *pts, struct figura_t *fig)
+{
+	struct pontos_t rect;
+	rect.x1 = pts->x1;
+	rect.y1 = pts->y1;
+	rect.x2 = pts->x1 + fig->largura;
+	rect.y2 = pts->y1 + fig->altura;
+	desenha_retangulo_preenchido(&rect, 0);
 }
 
 #endif /* HAPPY_BIRD_H_ */

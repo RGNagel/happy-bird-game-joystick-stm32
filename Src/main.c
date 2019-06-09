@@ -74,58 +74,62 @@ void vTask_Nr_Print(void *pvParameters)
 
 #define ADC_X valor_ADC[0]
 #define ADC_Y valor_ADC[1]
+/* read adc (joystick) and translate to position of the bird
+ *
+ * the draw of the bird should be independent (one task for it)
+ * because we need to slow the movement of the joystick (ADC) by
+ * delay
+ * */
 void vTask_happy_bird_position(void *pvParameters)
 {
-	// read adc (joystick) and translate to position of the bird
+
+	struct figura_t *bird = &hb_black_little_bird_fig;
 
 	// initial position
-	hb_bird_pts.x1 = (MAX_X >> 1) - hb_bird_fig.largura;
-	hb_bird_pts.y1 = (MAX_Y >> 1) - hb_bird_fig.altura;
+	hb_bird_pts.x1 = (MAX_X >> 1) - bird->largura;
+	hb_bird_pts.y1 = (MAX_Y >> 1) - bird->altura;
 
 	unsigned char moved = FALSE;
+	unsigned int step = 1;
 
 	while (1)
 	{
-
-		// draw bird
-
-		desenha_fig(&hb_bird_pts, &hb_bird_fig);
+		// first erase bird
+		apaga_fig(&hb_bird_pts, bird);
 
 		// X AXIS
 		if (ADC_X < LOWER_BOUND && hb_bird_pts.x1 > 0) {
-			hb_bird_pts.x1--;
+			hb_bird_pts.x1 -= step;
 			moved = TRUE;
 		}
-		else if (ADC_X > UPPER_BOUND && hb_bird_pts.x1 < (MAX_X - hb_bird_fig.largura)) {
-			hb_bird_pts.x1++;
+		else if (ADC_X > UPPER_BOUND && hb_bird_pts.x1 < (MAX_X - bird->largura)) {
+			hb_bird_pts.x1 += step;
 			moved = TRUE;
 		}
 
 		// Y AXIS
 		if (ADC_Y < LOWER_BOUND && hb_bird_pts.y1 > 0) {
-			hb_bird_pts.y1--;
+			hb_bird_pts.y1 -= step;
 			moved = TRUE;
 		}
-		else if (ADC_Y > UPPER_BOUND && hb_bird_pts.y1 < (MAX_Y - hb_bird_fig.altura)) {
-			hb_bird_pts.y1++;
+		else if (ADC_Y > UPPER_BOUND && hb_bird_pts.y1 < (MAX_Y - bird->altura)) {
+			hb_bird_pts.y1 += step;
 			moved = TRUE;
 		}
+
+		// draw bird
+		desenha_fig(&hb_bird_pts, bird);
 
 		if (moved) {
-			limpa_LCD();
-			desenha_fig(&hb_bird_pts, &hb_bird_fig);
-			vTaskDelay(16 / portTICK_RATE_MS);
+			vTaskDelay(50 / portTICK_RATE_MS);
 		}
 		else {
-			desenha_fig(&hb_bird_pts, &hb_bird_fig);
+			vTaskDelay(16 / portTICK_RATE_MS);
 		}
-
 	}
 }
 #undef ADC_X
 #undef ADC_Y
-
-
 
 void vTask_happy_bird_obstacle(void *pvParameters)
 {
@@ -134,28 +138,32 @@ void vTask_happy_bird_obstacle(void *pvParameters)
 	hb_obstacle_pts.y1 = 0;
 
 	struct pontos_t rectangle;
-	rectangle.y1 = 20;//get_initial_y();
+	rectangle.y1 = get_initial_y();
 
 	while (1)
 	{
-		limpa_LCD();
-		// first draw obstacle
+		apaga_fig(&hb_obstacle_pts, &hb_obstacle_fig);
+
+		if (hb_obstacle_pts.x1 == 0) {
+			hb_obstacle_pts.x1 = MAX_X;
+			rectangle.y1 = get_initial_y();
+		}
+		else {
+			hb_obstacle_pts.x1--;
+		}
+
 		desenha_fig(&hb_obstacle_pts, &hb_obstacle_fig);
+
 		// draw empty rectangle over obstacle (where bird must go through)
 		rectangle.x1 = hb_obstacle_pts.x1;
 		rectangle.x2 = rectangle.x1 + hb_obstacle_fig.largura;
 		rectangle.y2 = rectangle.y1 + 1.2*hb_bird_fig.altura;
 		desenha_retangulo_preenchido(&rectangle, 0);
 
-		if (hb_obstacle_pts.x1 == 0) {
-			hb_obstacle_pts.x1 = MAX_X;
-			rectangle.y1 = 20;//get_initial_y();
-		}
-		else {
-			hb_obstacle_pts.x1--;
-		}
+		// check if bird overlaps obstacle
 
-		vTaskDelay(50 / portTICK_RATE_MS);
+
+		vTaskDelay(100 / portTICK_RATE_MS);
 	}
 }
 //---------------------------------------------------------------------------------------------------
@@ -248,7 +256,7 @@ int main(void)
 	/* USER CODE BEGIN RTOS_THREADS */
 	xTaskCreate(vTask_LCD_Print, "Task 1", 100, NULL, 1, NULL);
 	//xTaskCreate(vTask_Nr_Print, "Task 2", 100, NULL, 1,NULL);
-	//xTaskCreate(vTask_happy_bird_position, "Bird", 100, NULL, 1, NULL);
+	xTaskCreate(vTask_happy_bird_position, "Bird", 100, NULL, 1, NULL);
 	xTaskCreate(vTask_happy_bird_obstacle, "Obstacle", 100, NULL, 1, NULL);
 	/* USER CODE END RTOS_THREADS */
 
