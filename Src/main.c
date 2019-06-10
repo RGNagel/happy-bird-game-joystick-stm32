@@ -133,35 +133,45 @@ void vTask_happy_bird_position(void *pvParameters)
 
 void vTask_happy_bird_obstacle(void *pvParameters)
 {
+	struct pontos_t obstacle_upper, obstacle_lower;
+	struct figura_t *bird = &hb_bird_fig;
+	uint32_t y_rand = get_initial_y();
+
 	// initial position
 	hb_obstacle_pts.x1 = MAX_X;
 	hb_obstacle_pts.y1 = 0;
 
-	struct pontos_t rectangle;
-	rectangle.y1 = get_initial_y();
-
 	while (1)
 	{
-		apaga_fig(&hb_obstacle_pts, &hb_obstacle_fig);
+		// erase first obstacle (upper)
+		desenha_retangulo_preenchido(&obstacle_upper, 0);
+		// erase second obstacle (lower)
+		desenha_retangulo_preenchido(&obstacle_lower, 0);
 
+		// if obstacle reached left screen border
 		if (hb_obstacle_pts.x1 == 0) {
 			hb_obstacle_pts.x1 = MAX_X;
-			rectangle.y1 = get_initial_y();
+			y_rand = get_initial_y();
 		}
 		else {
+			// keep moving
 			hb_obstacle_pts.x1--;
 		}
 
-		desenha_fig(&hb_obstacle_pts, &hb_obstacle_fig);
-
-		// draw empty rectangle over obstacle (where bird must go through)
-		rectangle.x1 = hb_obstacle_pts.x1;
-		rectangle.x2 = rectangle.x1 + hb_obstacle_fig.largura;
-		rectangle.y2 = rectangle.y1 + 1.2*hb_bird_fig.altura;
-		desenha_retangulo_preenchido(&rectangle, 0);
+		// first obstacle (upper)
+		obstacle_upper.x1 = hb_obstacle_pts.x1;
+		obstacle_upper.x2 = hb_obstacle_pts.x1 + hb_obstacle_fig.largura;
+		obstacle_upper.y1 = 0;
+		obstacle_upper.y2 = y_rand;
+		desenha_fig(&obstacle_upper, &hb_obstacle_fig);
+		// second part (lower)
+		obstacle_lower.x1 = hb_obstacle_pts.x1;
+		obstacle_lower.x2 = obstacle_upper.x2;
+		obstacle_lower.y1 = y_rand + 1.1 * bird->altura;
+		obstacle_lower.y2 = MAX_Y;
+		desenha_fig(&obstacle_lower, &hb_obstacle_fig);
 
 		// check if bird overlaps obstacle
-
 
 		vTaskDelay(100 / portTICK_RATE_MS);
 	}

@@ -119,8 +119,14 @@ inline void apaga_fig(struct pontos_t *pts, struct figura_t *fig)
 	struct pontos_t rect;
 	rect.x1 = pts->x1;
 	rect.y1 = pts->y1;
-	rect.x2 = pts->x1 + fig->largura;
-	rect.y2 = pts->y1 + fig->altura;
+	if (pts->y2 == 0 || pts->x2 == 0) {
+		rect.x2 = pts->x1 + fig->largura;
+		rect.y2 = pts->y1 + fig->altura;
+	}
+	else {
+		rect.x2 = pts->x2;
+		rect.y2 = pts->y2;
+	}
 	desenha_retangulo_preenchido(&rect, 0);
 }
 
