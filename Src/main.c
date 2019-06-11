@@ -11,6 +11,11 @@
 #include "PRNG_LFSR.h"
 #include "happy_bird.h"
 
+#define ADC_X valor_ADC[0]
+#define ADC_Y valor_ADC[1]
+
+#define IS_JOYSTICK_PUSHED() (!HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_15))
+
 /* USER CODE END Includes */
 
 /* Private variables ---------------------------------------------------------*/
@@ -23,7 +28,7 @@ DMA_HandleTypeDef hdma_adc1;
 /* Private variables ---------------------------------------------------------*/
 uint32_t ADC_buffer[2];
 uint32_t valor_ADC[2];
-TaskHandle_t taskHandlerBirdPosition;
+TaskHandle_t taskHandlerJoystick;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -73,109 +78,195 @@ void vTask_Nr_Print(void *pvParameters)
 	}
 }
 
-#define ADC_X valor_ADC[0]
-#define ADC_Y valor_ADC[1]
 /* read adc (joystick) and translate to position of the bird
  *
  * the draw of the bird should be independent (one task for it)
  * because we need to slow the movement of the joystick (ADC) by
  * delay
  * */
-void vTask_happy_bird_position(void *pvParameters)
+void vTask_joystick(void *pvParameters)
 {
-
-	// initial position
-	hb_bird_pts.x1 = (MAX_X >> 1) - bird->largura;
-	hb_bird_pts.y1 = (MAX_Y >> 1) - bird->altura;
 
 	unsigned char moved = FALSE;
 
 	while (1)
 	{
-		// first erase bird
-		apaga_fig(&hb_bird_pts, bird);
+		switch (hb_fsm) {
+		case PLAYING:
 
-		// X AXIS
-		if (ADC_X < LOWER_BOUND && hb_bird_pts.x1 > 0) {
-			hb_bird_pts.x1 -= hb_control.bird_step;
-			moved = TRUE;
-		}
-		else if (ADC_X > UPPER_BOUND && hb_bird_pts.x1 < (MAX_X - bird->largura)) {
-			hb_bird_pts.x1 += hb_control.bird_step;
-			moved = TRUE;
-		}
+			// first erase bird
+			apaga_fig(&hb_bird_pts, bird);
 
-		// Y AXIS
-		if (ADC_Y < LOWER_BOUND && hb_bird_pts.y1 > 0) {
-			hb_bird_pts.y1 -= hb_control.bird_step;
-			moved = TRUE;
-		}
-		else if (ADC_Y > UPPER_BOUND && hb_bird_pts.y1 < (MAX_Y - bird->altura)) {
-			hb_bird_pts.y1 += hb_control.bird_step;
-			moved = TRUE;
-		}
+			// X AXIS
+			if (ADC_X < LOWER_BOUND && hb_bird_pts.x1 > 0) {
+				hb_bird_pts.x1 -= hb_control.bird_step;
+				moved = TRUE;
+			}
+			else if (ADC_X > UPPER_BOUND && hb_bird_pts.x1 < (MAX_X - bird->largura)) {
+				hb_bird_pts.x1 += hb_control.bird_step;
+				moved = TRUE;
+			}
 
-		// draw bird
-		desenha_fig(&hb_bird_pts, bird);
+			// Y AXIS
+			if (ADC_Y < LOWER_BOUND && hb_bird_pts.y1 > 0) {
+				hb_bird_pts.y1 -= hb_control.bird_step;
+				moved = TRUE;
+			}
+			else if (ADC_Y > UPPER_BOUND && hb_bird_pts.y1 < (MAX_Y - bird->altura)) {
+				hb_bird_pts.y1 += hb_control.bird_step;
+				moved = TRUE;
+			}
 
-		if (moved) {
-			vTaskDelay(50 / portTICK_RATE_MS);
-		}
-		else {
+			// draw bird
+			desenha_fig(&hb_bird_pts, bird);
+
+			if (moved) {
+				vTaskDelay(50 / portTICK_RATE_MS);
+			}
+			else {
+				vTaskDelay(16 / portTICK_RATE_MS);
+			}
+
+			break;
+
+		case STARTING:
+		case GAME_OVER:
+
 			vTaskDelay(16 / portTICK_RATE_MS);
+			break;
+
 		}
+
 	}
 }
-#undef ADC_X
-#undef ADC_Y
 
-void vTask_happy_bird_obstacle(void *pvParameters)
+void vTask_game(void *pvParameters)
 {
 	struct pontos_t obstacle_upper, obstacle_lower;
 	uint32_t y_rand = get_initial_y();
-
-	// initial position
-	hb_obstacle_pts.x1 = MAX_X;
-	hb_obstacle_pts.y1 = 0;
+	uint32_t semente_PRNG=1;
 
 	while (1)
 	{
-		// erase first obstacle (upper)
-		desenha_retangulo_preenchido(&obstacle_upper, 0);
-		// erase second obstacle (lower)
-		desenha_retangulo_preenchido(&obstacle_lower, 0);
+		switch (hb_fsm) {
+		case STARTING:
 
-		// if obstacle reached left screen border
-		if (hb_obstacle_pts.x1 == 0) {
+			// initial position
 			hb_obstacle_pts.x1 = MAX_X;
-			y_rand = get_initial_y();
-		}
-		else {
-			// keep moving
-			hb_obstacle_pts.x1 -= hb_control.obstacle_step;
-		}
+			hb_obstacle_pts.y1 = 0;
+			// initial position
+			hb_bird_pts.x1 = (MAX_X >> 1) - bird->largura;
+			hb_bird_pts.y1 = (MAX_Y >> 1) - bird->altura;
 
-		// first obstacle (upper)
-		obstacle_upper.x1 = hb_obstacle_pts.x1;
-		obstacle_upper.x2 = hb_obstacle_pts.x1 + hb_obstacle_fig.largura;
-		obstacle_upper.y1 = 0;
-		obstacle_upper.y2 = y_rand;
-		desenha_fig(&obstacle_upper, &hb_obstacle_fig);
-		// second part (lower)
-		obstacle_lower.x1 = hb_obstacle_pts.x1;
-		obstacle_lower.x2 = obstacle_upper.x2;
-		obstacle_lower.y1 = y_rand + 1.5 * bird->altura;
-		obstacle_lower.y2 = MAX_Y;
-		desenha_fig(&obstacle_lower, &hb_obstacle_fig);
-
-		// check if bird overlaps obstacles
-		if (overlaps(&hb_bird_pts, bird, &obstacle_upper, &hb_obstacle_fig) ||
-			overlaps(&hb_bird_pts, bird, &obstacle_lower, &hb_obstacle_fig)) {
-			vTaskSuspend(taskHandlerBirdPosition);
-			//limpa_LCD();
+			limpa_LCD();
 			goto_XY(0, 0);
+			string_LCD("Welcome to Happy Bird Game! Press the button to start.");
+
+			//while(HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_15)) // enquando nao pressionar joystick fica travado
+			while (!IS_JOYSTICK_PUSHED())
+			{
+				semente_PRNG++;		// semente para o gerador de n�meros pseudoaleatorios
+									// pode ser empregado o ADC lendo uma entrada flutuante para gerar a semente.
+			}
+
+			init_LFSR(semente_PRNG);	// inicializacao para geracao de numeros pseudoaleatorios
+			//rand_prng = prng_LFSR();	// sempre q a funcao prng() for chamada um novo nr � gerado.
+
+			limpa_LCD();
+			escreve2fb((unsigned char *)hb_opening);
+			vTaskDelay(1000 / portTICK_RATE_MS);
+			limpa_LCD();
+
+			hb_fsm = PLAYING;
+
+			break;
+
+		case PLAYING:
+
+			// erase first obstacle (upper)
+			desenha_retangulo_preenchido(&obstacle_upper, 0);
+			// erase second obstacle (lower)
+			desenha_retangulo_preenchido(&obstacle_lower, 0);
+
+			// if obstacle reached left screen border
+			if (hb_obstacle_pts.x1 == 0) {
+				hb_obstacle_pts.x1 = MAX_X;
+				y_rand = get_initial_y();
+			}
+			else {
+				// keep moving
+				hb_obstacle_pts.x1 -= hb_control.obstacle_step;
+			}
+
+			// first obstacle (upper)
+			obstacle_upper.x1 = hb_obstacle_pts.x1;
+			obstacle_upper.x2 = hb_obstacle_pts.x1 + hb_obstacle_fig.largura;
+			obstacle_upper.y1 = 0;
+			obstacle_upper.y2 = y_rand;
+			desenha_fig(&obstacle_upper, &hb_obstacle_fig);
+			// second part (lower)
+			obstacle_lower.x1 = hb_obstacle_pts.x1;
+			obstacle_lower.x2 = obstacle_upper.x2;
+			obstacle_lower.y1 = y_rand + 1.5 * bird->altura;
+			obstacle_lower.y2 = MAX_Y;
+			desenha_fig(&obstacle_lower, &hb_obstacle_fig);
+
+			// check if bird overlaps obstacles
+			if (overlaps(&hb_bird_pts, bird, &obstacle_upper, &hb_obstacle_fig) ||
+				overlaps(&hb_bird_pts, bird, &obstacle_lower, &hb_obstacle_fig)) {
+				hb_fsm = GAME_OVER;
+			}
+
+			break;
+
+		case GAME_OVER:
+			limpa_LCD();
+			goto_XY(0, 1);
 			string_LCD("Game Over");
-			while (1) {};
+			goto_XY(0,2);
+
+			uint32_t dec = 1;
+			if (hb_control.points > 9)
+				dec = 2;
+			else if (hb_control.points > 99)
+				dec = 3;
+			else if (hb_control.points > 999)
+				dec = 4;
+			string_LCD_Nr("Points: ", hb_control.points, dec);
+			goto_XY(0,3);
+			string_LCD("Play again?");
+			goto_XY(0, 4);
+
+			if (ADC_X > UPPER_BOUND)
+				hb_control.play_again = false;
+			else if (ADC_X < LOWER_BOUND)
+				hb_control.play_again = true;
+
+			if (hb_control.play_again)
+				string_LCD("*YES* <->  no ");
+			else
+				string_LCD(" yes  <-> *NO*");
+
+			if (IS_JOYSTICK_PUSHED()) {
+
+				if (hb_control.play_again) {
+					hb_control.points = 0;
+					hb_control.obstacle_step = 1;
+					hb_control.bird_step = 1;
+					hb_control.gems_collected = 0;
+
+					hb_fsm = STARTING;
+				}
+				else {
+					limpa_LCD();
+					goto_XY(0, 0);
+					string_LCD("Bye Bye!");
+					vTaskDelete(NULL); // itself
+				}
+			}
+
+			break;
+
 		}
 
 		vTaskDelay(100 / portTICK_RATE_MS);
@@ -192,7 +283,6 @@ void vTask_happy_bird_obstacle(void *pvParameters)
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-	uint32_t semente_PRNG=1;
 
   /* USER CODE END 1 */
 
@@ -226,29 +316,6 @@ int main(void)
 	inic_LCD();
 	limpa_LCD();
 
-	// --------------------------------------------------------------------------------------
-	// inicializa tela
-
-	goto_XY(0, 0);
-	string_LCD("Press.  Botao");
-	imprime_LCD();
-
-	while(HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_15)) // enquando nao pressionar joystick fica travado
-	{
-		semente_PRNG++;		// semente para o gerador de n�meros pseudoaleatorios
-							// pode ser empregado o ADC lendo uma entrada flutuante para gerar a semente.
-	}
-
-	init_LFSR(semente_PRNG);	// inicializacao para geracao de numeros pseudoaleatorios
-	//rand_prng = prng_LFSR();	// sempre q a funcao prng() for chamada um novo nr � gerado.
-
-	limpa_LCD();
-	escreve2fb((unsigned char *)hb_opening);
-	imprime_LCD();
-	HAL_Delay(1000);
-	limpa_LCD();
-	imprime_LCD();
-
 	/* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */
@@ -271,8 +338,8 @@ int main(void)
 	/* USER CODE BEGIN RTOS_THREADS */
 	xTaskCreate(vTask_LCD_Print, "Task 1", 100, NULL, 1, NULL);
 	//xTaskCreate(vTask_Nr_Print, "Task 2", 100, NULL, 1,NULL);
-	xTaskCreate(vTask_happy_bird_position, "Bird", 100, NULL, 1, &taskHandlerBirdPosition);
-	xTaskCreate(vTask_happy_bird_obstacle, "Obstacle", 100, NULL, 1, NULL);
+	xTaskCreate(vTask_joystick, "Joystick", 100, NULL, 1, &taskHandlerJoystick);
+	xTaskCreate(vTask_game, "Game", 100, NULL, 1, NULL);
 	/* USER CODE END RTOS_THREADS */
 
 	/* USER CODE BEGIN RTOS_QUEUES */

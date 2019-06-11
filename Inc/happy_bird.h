@@ -9,6 +9,7 @@
 #define HAPPY_BIRD_H_
 
 #include "PRNG_LFSR.h"
+#include "NOKIA5110_fb.h"
 
 #define true 1
 #define TRUE 1
@@ -22,20 +23,33 @@ typedef unsigned int bool;
 #define UPPER_BOUND 2200
 #define LOWER_BOUND 1800
 
+
+#define IS_WITHIN(x, x1, x2) (((x) >= (x1)) && ((x) <= (x2)))
+
+enum fsm {
+	STARTING,
+	PLAYING,
+	GAME_OVER,
+};
+
 struct control {
 	uint32_t gems_collected;
 	uint32_t points;
 	uint32_t superspeed;
 	uint32_t obstacle_step;
 	uint32_t bird_step;
+	bool play_again;
 };
 
-struct control hb_control = {
+static enum fsm hb_fsm = STARTING;
+
+static struct control hb_control = {
 		.gems_collected = 0,
 		.points = 0,
 		.superspeed = 0,
 		.obstacle_step = 1,
 		.bird_step = 1,
+		.play_again = true,
 };
 
 /*
@@ -45,7 +59,7 @@ struct control hb_control = {
  */
 
 // 25 x 18 (width x height)
-const struct figura_t hb_bird_fig = {
+static const struct figura_t hb_bird_fig = {
 		.largura = 25,
 		.altura = 18,
 		.pixels = {
@@ -55,7 +69,7 @@ const struct figura_t hb_bird_fig = {
 				0x12, 0x1E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 		}
 };
-const struct figura_t hb_black_little_bird_fig = {
+static const struct figura_t hb_black_little_bird_fig = {
 		.largura = 11,
 		.altura = 11,
 		.pixels = {
@@ -63,10 +77,10 @@ const struct figura_t hb_black_little_bird_fig = {
 		}
 };
 
-struct figura_t *bird = &hb_black_little_bird_fig;
-struct pontos_t hb_bird_pts;
+static struct figura_t *bird = &hb_black_little_bird_fig;
+static struct pontos_t hb_bird_pts;
 
-const struct figura_t hb_obstacle_fig = {
+static const struct figura_t hb_obstacle_fig = {
 		.largura = 10,
 		.altura = 47,
 		.pixels = {
@@ -76,9 +90,9 @@ const struct figura_t hb_obstacle_fig = {
 				0x73, 0x21, 0x04, 0x4E, 0x7F, 0x4E, 0x04, 0x04, 0x4E, 0x7F,
 		}
 };
-struct pontos_t hb_obstacle_pts;
+static struct pontos_t hb_obstacle_pts;
 
-const unsigned char hb_opening [] = {
+static const unsigned char hb_opening [] = {
 		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x3F, 0x3F,
 		0x3F, 0x3F, 0x3F, 0x3F, 0x3F, 0x3F, 0x3F, 0x3F, 0x3F, 0x3F, 0x3F, 0x3F, 0x3F, 0x3F, 0x3F, 0x3F,
@@ -118,69 +132,12 @@ static inline uint32_t get_initial_y(void)
 {
 	return prng_LFSR() % (MAX_Y - hb_bird_fig.altura);
 }
-
 /* prop: 0: clean, otherwise draw */
-void desenha_retangulo_preenchido(struct pontos_t *pts, uint32_t prop)
-{
-	struct pontos_t line;
-	line.y1 = pts->y1;
-	line.y2 = pts->y2;
+void desenha_retangulo_preenchido(struct pontos_t *pts, uint32_t prop);
 
-	for (uint32_t dx = pts->x1; dx <= pts->x2; dx++) {
-		line.x1 = dx;
-		line.x2 = dx;
-		desenha_linha(&line, prop);
-	}
-}
-
-inline void apaga_fig(struct pontos_t *pts, struct figura_t *fig)
-{
-	struct pontos_t rect;
-	rect.x1 = pts->x1;
-	rect.y1 = pts->y1;
-	if (pts->y2 == 0 || pts->x2 == 0) {
-		rect.x2 = pts->x1 + fig->largura;
-		rect.y2 = pts->y1 + fig->altura;
-	}
-	else {
-		rect.x2 = pts->x2;
-		rect.y2 = pts->y2;
-	}
-	desenha_retangulo_preenchido(&rect, 0);
-}
-
-#define IS_WITHIN(x, x1, x2) (((x) >= (x1)) && ((x) <= (x2)))
+void apaga_fig(struct pontos_t *pts, struct figura_t *fig);
 
 bool overlaps(const struct pontos_t *p1, const struct figura_t *f1,
-		      const struct pontos_t *p2, const struct figura_t *f2)
-{
-	uint32_t p1x2, p1y2, p2x2, p2y2;
-	bool vx1 = false, vx2 = false, vy1 = false, vy2 = false;
-
-	// if x2 or y2 is zero then use figure dimension
-	p1x2 = (p1->x2) ? p1->x2 : (p1->x1 + f1->largura -1);
-	p1y2 = (p1->y2) ? p1->y2 : (p1->y1 + f1->altura -1);
-	p2x2 = (p2->x2) ? p2->x2 : (p2->x1 + f2->largura -1);
-	p2y2 = (p2->y2) ? p2->y2 : (p2->y1 + f2->altura -1);
-
-	// x1
-	if (IS_WITHIN(p1->x1, p2->x1, p2x2))
-		vx1 = true;
-	// x2
-	if (IS_WITHIN(p1x2, p2->x1, p2x2))
-		vx2 = true;
-	// y1
-	if (IS_WITHIN(p1->y1, p2->y1, p2y2))
-		vy1 = true;
-	// y2
-	if (IS_WITHIN(p1y2, p2->y1, p2y2))
-		vy2 = true;
-
-	// here each figure is a square. we need to check the four vertices of the figure: x1, x2, y1, y2
-	if ((vx1 && vy1) || (vx1 && vy2) || (vx2 && vy1) || (vx2 && vy2))
-		return true;
-	else
-		return false;
-}
+		      const struct pontos_t *p2, const struct figura_t *f2);
 
 #endif /* HAPPY_BIRD_H_ */
