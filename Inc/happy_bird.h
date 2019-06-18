@@ -52,6 +52,8 @@ static struct control hb_control = {
 		.play_again = true,
 };
 
+static struct pontos_t obstacle_upper, obstacle_lower, gem_pts;
+
 /*
  * all bitmap pictures must be 48x84 (width x height) or less
  * if escreve2fb() is used the picture must be 48x84 or bigger

@@ -53,29 +53,10 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
 	}
 }
 
-//---------------------------------------------------------------------------------------------------
 // Tarefa para atualizar periodicamente o LCD
 void vTask_LCD_Print(void *pvParameters)
 {
 	while(1) imprime_LCD();
-}
-//---------------------------------------------------------------------------------------------------
-// Tarefa para imprimir um numero aleatorio
-void vTask_Nr_Print(void *pvParameters)
-{
-	uint32_t rand_prng;
-
-	while(1)
-	{
-		rand_prng = prng_LFSR();
-		//escreve_Nr_Peq(10,10, rand_prng, 10);
-		escreve_Nr_Peq(10,20, valor_ADC[0], 10);
-		escreve_Nr_Peq(10,30, valor_ADC[1], 10);
-		goto_XY(0,0);
-		string_LCD_Nr("Nr=", rand_prng, 10);			// escreve uma mensagem com um n�mero
-
-		vTaskDelay(500);
-	}
 }
 
 /* read adc (joystick) and translate to position of the bird
@@ -84,7 +65,8 @@ void vTask_Nr_Print(void *pvParameters)
  * because we need to slow the movement of the joystick (ADC) by
  * delay
  * */
-void vTask_joystick(void *pvParameters)
+
+void vTask_bird(void *pvParameters)
 {
 
 	unsigned char moved = FALSE;
@@ -142,7 +124,6 @@ void vTask_joystick(void *pvParameters)
 
 void vTask_game(void *pvParameters)
 {
-	struct pontos_t obstacle_upper, obstacle_lower, gem_pts;
 	uint32_t y_rand;
 	uint32_t semente_PRNG=1;
 
@@ -155,7 +136,6 @@ void vTask_game(void *pvParameters)
 			goto_XY(0, 0);
 			string_LCD("Welcome to Happy Bird Game! Press the button to start.");
 
-			//while(HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_15)) // enquando nao pressionar joystick fica travado
 			while (!IS_JOYSTICK_PUSHED())
 			{
 				semente_PRNG++;		// semente para o gerador de n�meros pseudoaleatorios
@@ -220,7 +200,7 @@ void vTask_game(void *pvParameters)
 			else {
 				// keep moving
 				hb_obstacle_pts.x1 -= hb_control.obstacle_step;
-				// need to check overflow
+				// check overflow
 				if (hb_obstacle_pts.x1 > (2 * MAX_X))
 					hb_obstacle_pts.x1 = 0;
 			}
@@ -238,43 +218,6 @@ void vTask_game(void *pvParameters)
 			obstacle_lower.y2 = MAX_Y;
 			desenha_fig(&obstacle_lower, obstacle);
 
-			// check if bird overlaps obstacles
-			if (overlaps(&hb_bird_pts, bird, &obstacle_upper, obstacle) ||
-				overlaps(&hb_bird_pts, bird, &obstacle_lower, obstacle)) {
-				hb_fsm = GAME_OVER;
-			}
-			// check if bird overlaps gem
-			else if (overlaps(&hb_bird_pts, bird, &gem_pts, gem)) {
-				hb_control.gems_collected++;
-				hb_control.row++;
-				if (hb_control.row >= 5) {
-					hb_control.row = 0;
-					//hb_control.bird_step++;
-					hb_control.obstacle_step++;
-				}
-				apaga_fig(&gem_pts, gem); // erase gem
-				// new gem
-				do {
-					gem_pts.x1 = get_rand_x_gem();
-					gem_pts.y1 = get_rand_y_gem();
-				} while (overlaps(&gem_pts, gem, &obstacle_upper, obstacle) ||
-						 overlaps(&gem_pts, gem, &obstacle_lower, obstacle) ||
-						 overlaps(&gem_pts, gem, &hb_bird_pts, bird));
-			}
-
-			// if obstacle overlaps gem
-			while (overlaps(&gem_pts, gem, &obstacle_upper, obstacle) ||
-				   overlaps(&gem_pts, gem, &obstacle_lower, obstacle)) {
-				apaga_fig(&gem_pts, gem); // erase gem
-				// new gem
-				do {
-					gem_pts.x1 = get_rand_x_gem();
-					gem_pts.y1 = get_rand_y_gem();
-				} while (overlaps(&gem_pts, gem, &obstacle_upper, obstacle) ||
-						 overlaps(&gem_pts, gem, &obstacle_lower, obstacle) ||
-						 overlaps(&gem_pts, gem, &hb_bird_pts, bird));
-			}
-
 			desenha_fig(&gem_pts, gem);
 
 			break;
@@ -285,13 +228,14 @@ void vTask_game(void *pvParameters)
 			string_LCD("Game Over");
 			goto_XY(0,2);
 
-			uint32_t dec = 1;
-			if (hb_control.row > 9)
+			uint32_t dec;
+			if ((hb_control.gems_collected / 10) == 0)
+				dec = 1;
+			else if ((hb_control.gems_collected / 100) == 0)
 				dec = 2;
-			else if (hb_control.row > 99)
+			else
 				dec = 3;
-			else if (hb_control.row > 999)
-				dec = 4;
+
 			string_LCD_Nr("Points: ", hb_control.gems_collected, dec);
 			goto_XY(0,3);
 			string_LCD("Play again?");
@@ -326,6 +270,64 @@ void vTask_game(void *pvParameters)
 		}
 
 		vTaskDelay(100 / portTICK_RATE_MS);
+	}
+}
+
+void vTask_overlap(void *pvParameters)
+{
+	while (1) {
+		switch (hb_fsm) {
+		case PLAYING:
+
+			// check if bird overlaps obstacles
+			if (overlaps(&hb_bird_pts, bird, &obstacle_upper, obstacle) ||
+				overlaps(&hb_bird_pts, bird, &obstacle_lower, obstacle)) {
+				hb_fsm = GAME_OVER;
+				break;
+			}
+			// check if bird overlaps gem
+			else if (overlaps(&hb_bird_pts, bird, &gem_pts, gem)) {
+				hb_control.gems_collected++;
+				hb_control.row++;
+				if (hb_control.row >= 5) {
+					hb_control.row = 0;
+					//hb_control.bird_step++;
+					hb_control.obstacle_step++;
+				}
+				apaga_fig(&gem_pts, gem); // erase gem
+				// new gem
+				do {
+					gem_pts.x1 = get_rand_x_gem();
+					gem_pts.y1 = get_rand_y_gem();
+				} while (overlaps(&gem_pts, gem, &obstacle_upper, obstacle) ||
+						 overlaps(&gem_pts, gem, &obstacle_lower, obstacle) ||
+						 overlaps(&gem_pts, gem, &hb_bird_pts, bird));
+				desenha_fig(&gem_pts, gem);
+			}
+
+			// if obstacle overlaps gem
+			while (overlaps(&gem_pts, gem, &obstacle_upper, obstacle) ||
+				   overlaps(&gem_pts, gem, &obstacle_lower, obstacle)) {
+				apaga_fig(&gem_pts, gem); // erase gem
+				// new gem
+				do {
+					gem_pts.x1 = get_rand_x_gem();
+					gem_pts.y1 = get_rand_y_gem();
+				} while (overlaps(&gem_pts, gem, &obstacle_upper, obstacle) ||
+						 overlaps(&gem_pts, gem, &obstacle_lower, obstacle) ||
+						 overlaps(&gem_pts, gem, &hb_bird_pts, bird));
+				desenha_fig(&gem_pts, gem);
+			}
+
+			break;
+
+		case STARTING:
+		case GAME_OVER:
+
+			break;
+		}
+
+		vTaskDelay(10 / portTICK_RATE_MS);
 	}
 }
 //---------------------------------------------------------------------------------------------------
@@ -393,9 +395,9 @@ int main(void)
 
 	/* USER CODE BEGIN RTOS_THREADS */
 	xTaskCreate(vTask_LCD_Print, "Task 1", 100, NULL, 1, NULL);
-	//xTaskCreate(vTask_Nr_Print, "Task 2", 100, NULL, 1,NULL);
-	xTaskCreate(vTask_joystick, "Joystick", 100, NULL, 1, &taskHandlerJoystick);
+	xTaskCreate(vTask_bird, "vTask_bird", 100, NULL, 1, &taskHandlerJoystick);
 	xTaskCreate(vTask_game, "Game", 100, NULL, 1, NULL);
+	xTaskCreate(vTask_overlap, "Overlap", 100, NULL, 1, NULL);
 	/* USER CODE END RTOS_THREADS */
 
 	/* USER CODE BEGIN RTOS_QUEUES */
