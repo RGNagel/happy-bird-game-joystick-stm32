@@ -34,7 +34,7 @@ enum fsm {
 
 struct control {
 	uint32_t gems_collected;
-	uint32_t points;
+	uint32_t row;
 	uint32_t superspeed;
 	uint32_t obstacle_step;
 	uint32_t bird_step;
@@ -45,7 +45,7 @@ static enum fsm hb_fsm = STARTING;
 
 static struct control hb_control = {
 		.gems_collected = 0,
-		.points = 0,
+		.row = 0,
 		.superspeed = 0,
 		.obstacle_step = 1,
 		.bird_step = 1,
@@ -77,8 +77,8 @@ static const struct figura_t hb_black_little_bird_fig = {
 		}
 };
 
-static struct figura_t *bird = &hb_black_little_bird_fig;
 static struct pontos_t hb_bird_pts;
+static struct figura_t *bird = &hb_black_little_bird_fig;
 
 static const struct figura_t hb_obstacle_fig = {
 		.largura = 10,
@@ -90,7 +90,27 @@ static const struct figura_t hb_obstacle_fig = {
 				0x73, 0x21, 0x04, 0x4E, 0x7F, 0x4E, 0x04, 0x04, 0x4E, 0x7F,
 		}
 };
+
 static struct pontos_t hb_obstacle_pts;
+static struct figura_t *obstacle = &hb_obstacle_fig;
+
+static const struct figura_t hb_gem_1 = {
+		.largura = 15,
+		.altura = 15,
+		.pixels = {
+				0xC0, 0xF0, 0xFC, 0xFC, 0xFE, 0xFE, 0xFF, 0xFF, 0xFF, 0xFE, 0xFE, 0xFC, 0xFC, 0xF0, 0xC0, 0x01,
+				0x07, 0x1F, 0x1F, 0x3F, 0x3F, 0x7F, 0x7F, 0x7F, 0x3F, 0x3F, 0x1F, 0x1F,
+		}
+};
+static const struct figura_t hb_gem_3 = {
+		.largura = 7,
+		.altura = 7,
+		.pixels = {
+				0x49, 0x2A, 0x1C, 0x77, 0x1C, 0x2A
+		}
+};
+
+static struct figura_t *gem = &hb_gem_3;
 
 static const unsigned char hb_opening [] = {
 		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
@@ -127,13 +147,25 @@ static const unsigned char hb_opening [] = {
 		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 };
 
-/* get a random point from which we will draw a empty retangle for the bird to go through */
-static inline uint32_t get_initial_y(void)
+/* get a random point from which we will draw a empty rectangle for the bird to go through */
+static inline uint32_t get_rand_y_obstacle(void)
 {
-	return prng_LFSR() % (MAX_Y - hb_bird_fig.altura);
+	return prng_LFSR() % (MAX_Y - bird->altura);
 }
+
+static inline uint32_t get_rand_x_gem(void)
+{
+	return prng_LFSR() % (MAX_X - gem->largura);
+}
+static inline uint32_t get_rand_y_gem(void)
+{
+	return prng_LFSR() % (MAX_Y - gem->altura);
+}
+
 /* prop: 0: clean, otherwise draw */
 void desenha_retangulo_preenchido(struct pontos_t *pts, uint32_t prop);
+
+#define apaga_retangulo_preenchido(pts) desenha_retangulo_preenchido(pts, 0)
 
 void apaga_fig(struct pontos_t *pts, struct figura_t *fig);
 

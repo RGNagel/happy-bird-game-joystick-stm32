@@ -22,7 +22,6 @@ void desenha_retangulo_preenchido(struct pontos_t *pts, uint32_t prop)
 		desenha_linha(&line, prop);
 	}
 }
-
 void apaga_fig(struct pontos_t *pts, struct figura_t *fig)
 {
 	struct pontos_t rect;
@@ -47,10 +46,10 @@ bool overlaps(const struct pontos_t *p1, const struct figura_t *f1,
 	bool vx1 = false, vx2 = false, vy1 = false, vy2 = false;
 
 	// if x2 or y2 is zero then use figure dimension
-	p1x2 = (p1->x2) ? p1->x2 : (p1->x1 + f1->largura -1);
-	p1y2 = (p1->y2) ? p1->y2 : (p1->y1 + f1->altura -1);
-	p2x2 = (p2->x2) ? p2->x2 : (p2->x1 + f2->largura -1);
-	p2y2 = (p2->y2) ? p2->y2 : (p2->y1 + f2->altura -1);
+	p1x2 = (p1->x2) ? p1->x2 : (p1->x1 + f1->largura -2);
+	p1y2 = (p1->y2) ? p1->y2 : (p1->y1 + f1->altura -2);
+	p2x2 = (p2->x2) ? p2->x2 : (p2->x1 + f2->largura -2);
+	p2y2 = (p2->y2) ? p2->y2 : (p2->y1 + f2->altura -2);
 
 	// x1
 	if (IS_WITHIN(p1->x1, p2->x1, p2x2))

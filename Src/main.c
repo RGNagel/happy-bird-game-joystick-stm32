@@ -142,21 +142,14 @@ void vTask_joystick(void *pvParameters)
 
 void vTask_game(void *pvParameters)
 {
-	struct pontos_t obstacle_upper, obstacle_lower;
-	uint32_t y_rand = get_initial_y();
+	struct pontos_t obstacle_upper, obstacle_lower, gem_pts;
+	uint32_t y_rand;
 	uint32_t semente_PRNG=1;
 
 	while (1)
 	{
 		switch (hb_fsm) {
 		case STARTING:
-
-			// initial position
-			hb_obstacle_pts.x1 = MAX_X;
-			hb_obstacle_pts.y1 = 0;
-			// initial position
-			hb_bird_pts.x1 = (MAX_X >> 1) - bird->largura;
-			hb_bird_pts.y1 = (MAX_Y >> 1) - bird->altura;
 
 			limpa_LCD();
 			goto_XY(0, 0);
@@ -177,45 +170,112 @@ void vTask_game(void *pvParameters)
 			vTaskDelay(1000 / portTICK_RATE_MS);
 			limpa_LCD();
 
+			// initial positions
+
+			y_rand = get_rand_y_obstacle();
+
+			hb_control.row = 0;
+			hb_control.obstacle_step = 1;
+			hb_control.bird_step = 1;
+			hb_control.gems_collected = 0;
+
+			hb_obstacle_pts.x1 = MAX_X;
+			obstacle_upper.x1 = hb_obstacle_pts.x1;
+			obstacle_upper.x2 = hb_obstacle_pts.x1 + obstacle->largura;
+			obstacle_upper.y1 = 0;
+			obstacle_upper.y2 = y_rand;
+			obstacle_lower.x1 = hb_obstacle_pts.x1;
+			obstacle_lower.x2 = obstacle_upper.x2;
+			obstacle_lower.y1 = y_rand + 1.5 * bird->altura;
+			obstacle_lower.y2 = MAX_Y;
+
+			hb_bird_pts.x1 = (MAX_X >> 1) - bird->largura;
+			hb_bird_pts.y1 = (MAX_Y >> 1) - bird->altura;
+			hb_bird_pts.x2 = 0;
+			hb_bird_pts.y2 = 0;
+
+			gem_pts.x1 = get_rand_x_gem();
+			gem_pts.y1 = get_rand_y_gem();
+
 			hb_fsm = PLAYING;
 
 			break;
 
 		case PLAYING:
+			escreve_Nr_Peq(0, 0, hb_control.gems_collected, 0);
 
 			// erase first obstacle (upper)
-			desenha_retangulo_preenchido(&obstacle_upper, 0);
+			apaga_fig(&obstacle_upper, obstacle);
+			//apaga_retangulo_preenchido(&obstacle_upper);
+
 			// erase second obstacle (lower)
-			desenha_retangulo_preenchido(&obstacle_lower, 0);
+			apaga_fig(&obstacle_lower, obstacle);
+			//apaga_retangulo_preenchido(&obstacle_lower);
 
 			// if obstacle reached left screen border
-			if (hb_obstacle_pts.x1 == 0) {
+			if (hb_obstacle_pts.x1 <= 0) {
 				hb_obstacle_pts.x1 = MAX_X;
-				y_rand = get_initial_y();
+				y_rand = get_rand_y_obstacle();
 			}
 			else {
 				// keep moving
 				hb_obstacle_pts.x1 -= hb_control.obstacle_step;
+				// need to check overflow
+				if (hb_obstacle_pts.x1 > (2 * MAX_X))
+					hb_obstacle_pts.x1 = 0;
 			}
 
 			// first obstacle (upper)
 			obstacle_upper.x1 = hb_obstacle_pts.x1;
-			obstacle_upper.x2 = hb_obstacle_pts.x1 + hb_obstacle_fig.largura;
+			obstacle_upper.x2 = hb_obstacle_pts.x1 + obstacle->largura;
 			obstacle_upper.y1 = 0;
 			obstacle_upper.y2 = y_rand;
-			desenha_fig(&obstacle_upper, &hb_obstacle_fig);
+			desenha_fig(&obstacle_upper, obstacle);
 			// second part (lower)
 			obstacle_lower.x1 = hb_obstacle_pts.x1;
 			obstacle_lower.x2 = obstacle_upper.x2;
 			obstacle_lower.y1 = y_rand + 1.5 * bird->altura;
 			obstacle_lower.y2 = MAX_Y;
-			desenha_fig(&obstacle_lower, &hb_obstacle_fig);
+			desenha_fig(&obstacle_lower, obstacle);
 
 			// check if bird overlaps obstacles
-			if (overlaps(&hb_bird_pts, bird, &obstacle_upper, &hb_obstacle_fig) ||
-				overlaps(&hb_bird_pts, bird, &obstacle_lower, &hb_obstacle_fig)) {
+			if (overlaps(&hb_bird_pts, bird, &obstacle_upper, obstacle) ||
+				overlaps(&hb_bird_pts, bird, &obstacle_lower, obstacle)) {
 				hb_fsm = GAME_OVER;
 			}
+			// check if bird overlaps gem
+			else if (overlaps(&hb_bird_pts, bird, &gem_pts, gem)) {
+				hb_control.gems_collected++;
+				hb_control.row++;
+				if (hb_control.row >= 5) {
+					hb_control.row = 0;
+					//hb_control.bird_step++;
+					hb_control.obstacle_step++;
+				}
+				apaga_fig(&gem_pts, gem); // erase gem
+				// new gem
+				do {
+					gem_pts.x1 = get_rand_x_gem();
+					gem_pts.y1 = get_rand_y_gem();
+				} while (overlaps(&gem_pts, gem, &obstacle_upper, obstacle) ||
+						 overlaps(&gem_pts, gem, &obstacle_lower, obstacle) ||
+						 overlaps(&gem_pts, gem, &hb_bird_pts, bird));
+			}
+
+			// if obstacle overlaps gem
+			while (overlaps(&gem_pts, gem, &obstacle_upper, obstacle) ||
+				   overlaps(&gem_pts, gem, &obstacle_lower, obstacle)) {
+				apaga_fig(&gem_pts, gem); // erase gem
+				// new gem
+				do {
+					gem_pts.x1 = get_rand_x_gem();
+					gem_pts.y1 = get_rand_y_gem();
+				} while (overlaps(&gem_pts, gem, &obstacle_upper, obstacle) ||
+						 overlaps(&gem_pts, gem, &obstacle_lower, obstacle) ||
+						 overlaps(&gem_pts, gem, &hb_bird_pts, bird));
+			}
+
+			desenha_fig(&gem_pts, gem);
 
 			break;
 
@@ -226,13 +286,13 @@ void vTask_game(void *pvParameters)
 			goto_XY(0,2);
 
 			uint32_t dec = 1;
-			if (hb_control.points > 9)
+			if (hb_control.row > 9)
 				dec = 2;
-			else if (hb_control.points > 99)
+			else if (hb_control.row > 99)
 				dec = 3;
-			else if (hb_control.points > 999)
+			else if (hb_control.row > 999)
 				dec = 4;
-			string_LCD_Nr("Points: ", hb_control.points, dec);
+			string_LCD_Nr("Points: ", hb_control.gems_collected, dec);
 			goto_XY(0,3);
 			string_LCD("Play again?");
 			goto_XY(0, 4);
@@ -250,10 +310,6 @@ void vTask_game(void *pvParameters)
 			if (IS_JOYSTICK_PUSHED()) {
 
 				if (hb_control.play_again) {
-					hb_control.points = 0;
-					hb_control.obstacle_step = 1;
-					hb_control.bird_step = 1;
-					hb_control.gems_collected = 0;
 
 					hb_fsm = STARTING;
 				}
